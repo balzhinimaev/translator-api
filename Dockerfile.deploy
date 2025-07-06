@@ -1,0 +1,35 @@
+# Dockerfile для деплоя (только собранный код)
+FROM node:18-alpine
+
+# Устанавливаем рабочую директорию
+WORKDIR /app
+
+# Копируем package.json для установки зависимостей
+COPY package*.json ./
+
+# Устанавливаем только продакшн зависимости
+RUN npm ci --only=production && npm cache clean --force
+
+# Копируем уже собранное приложение
+COPY dist/ ./dist/
+
+# Создаем директорию для временных файлов
+RUN mkdir -p temp
+
+# Создаем пользователя для безопасности
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodeuser -u 1001
+
+# Меняем владельца файлов
+RUN chown -R nodeuser:nodejs /app
+USER nodeuser
+
+# Открываем порт
+EXPOSE 3000
+
+# Проверка здоровья
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Запускаем приложение
+CMD ["node", "dist/app.js"] 

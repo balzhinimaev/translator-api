@@ -1,0 +1,16 @@
+# docker-compose.yml
+version: '3.8'
+services:
+  mongodb:
+    image: mongo:latest
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: myuser
+      MONGO_INITDB_ROOT_PASSWORD: mypassword
+    ports:
+      - "27017:27017" # Стандартный порт MongoDB
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

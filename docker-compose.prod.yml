@@ -1,0 +1,58 @@
+# docker-compose.prod.yml - Конфигурация для продакшена
+services:
+  # API сервис
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.deploy
+    container_name: translator_api_prod
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./temp:/app/temp
+    networks:
+      - translator_network_prod
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MongoDB для продакшена
+  mongodb:
+    image: mongo:7.0
+    container_name: translator_mongodb_prod
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodb_data:/data/db
+      - ./mongodb_config:/data/configdb
+      - ./backup:/backup
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - translator_network_prod
+    command: ["mongod", "--auth", "--bind_ip_all", "--port", "27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Данные MongoDB теперь хранятся в папках ./mongodb_data и ./mongodb_config
+
+networks:
+  translator_network_prod:
+    driver: bridge 

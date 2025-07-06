@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Speech Translation Demo</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #444; }
+        #status { margin-bottom: 15px; padding: 12px; border: 1px solid #ccc; background: #f0f0f0; border-radius: 4px; font-weight: bold; }
+        #controls button { padding: 10px 15px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; color: white; }
+        #loginBtn { background-color: #007bff; }
+        #recordBtn { background-color: #28a745; }
+        #recordBtn:disabled { background-color: #6c757d; }
+        #recordBtn.recording { background-color: #dc3545; }
+        #texts { margin-top: 20px; }
+        h3 { color: #555; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        p { background-color: #e9ecef; padding: 10px; border-radius: 4px; min-height: 1.2em;}
+        input[type="text"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        .lang-select { display: flex; gap: 10px; margin-bottom: 20px;}
+        .lang-select > div { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-time Speech Translation Demo</h1>
+
+        <div id="status">Ready. Please login.</div>
+
+        <div id="controls">
+            <input type="text" id="initData" placeholder="Paste Telegram initData here for testing" style="width: 100%; box-sizing: border-box;">
+            <button id="loginBtn">Login</button>
+            <hr style="margin: 20px 0;">
+            <div class="lang-select">
+                <div>
+                    <label for="src_lang">Source Language:</label>
+                    <input type="text" id="src_lang" value="en">
+                </div>
+                <div>
+                    <label for="dst_lang">Destination Language:</label>
+                    <input type="text" id="dst_lang" value="ru">
+                </div>
+            </div>
+            <button id="recordBtn" disabled>Start Recording</button>
+        </div>
+
+        <div id="texts">
+            <h3>Original Text:</h3>
+            <p id="originalText">-</p>
+            <h3>Translated Text:</h3>
+            <p id="translatedText">-</p>
+        </div>
+    </div>
+
+    <script>
+        const loginBtn = document.getElementById('loginBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const statusDiv = document.getElementById('status');
+        const originalTextElem = document.getElementById('originalText');
+        const translatedTextElem = document.getElementById('translatedText');
+        const initDataInput = document.getElementById('initData');
+        const srcLangInput = document.getElementById('src_lang');
+        const dstLangInput = document.getElementById('dst_lang');
+
+        let wsToken = null;
+        let ws = null;
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // В реальном TWA приложении используйте: const initData = window.Telegram.WebApp.initData;
+        // Для локального тестирования, вставьте initData в поле выше.
+        // URL должен указывать на ваш сервер с Nginx
+        const API_BASE_URL = 'https://anoname.xyz'; 
+        
+        // Попробуем получить initData от Telegram WebApp SDK, если он доступен
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            initDataInput.value = window.Telegram.WebApp.initData;
+            statusDiv.textContent = "Telegram initData loaded automatically.";
+        }
+
+        loginBtn.addEventListener('click', async () => {
+            const initData = initDataInput.value;
+            if (!initData) {
+                statusDiv.textContent = 'Error: Please provide initData.';
+                return;
+            }
+
+            statusDiv.textContent = 'Authenticating...';
+            try {
+                // Обратите внимание на путь /v1/users/register
+                const response = await fetch(`${API_BASE_URL}/v1/users/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ initData: initData })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`Authentication failed: ${error.error || 'Unknown error'}`);
+                }
+
+                const data = await response.json();
+                wsToken = data.wsToken;
+                statusDiv.textContent = 'Authentication successful! Ready to record.';
+                recordBtn.disabled = false;
+                loginBtn.disabled = true;
+                initDataInput.disabled = true;
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+                console.error(error);
+            }
+        });
+
+        recordBtn.addEventListener('click', () => {
+            if (!wsToken) {
+                statusDiv.textContent = 'Error: Not authenticated.';
+                return;
+            }
+
+            if (isRecording) {
+                stopRecordingAndSend();
+            } else {
+                startRecording();
+            }
+        });
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log("WebSocket is already connected.");
+                return;
+            }
+            const wsUrl = `wss://${new URL(API_BASE_URL).host}/v1/stream/speech?token=${wsToken}`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDiv.textContent = 'WebSocket connected. Recording... Speak now!';
+                mediaRecorder.start();
+                isRecording = true;
+                recordBtn.textContent = 'Stop Recording';
+                recordBtn.classList.add('recording');
+            };
+
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('Received from server:', message);
+
+                switch(message.type) {
+                    case 'info':
+                        statusDiv.textContent = `Server: ${message.message}`;
+                        break;
+                    case 'error':
+                        statusDiv.textContent = `Error: ${message.message || message.error}`;
+                        resetState();
+                        break;
+                    case 'stt_completed':
+                        originalTextElem.textContent = message.payload.text || '(empty)';
+                        statusDiv.textContent = 'Speech-to-text complete. Translating...';
+                        break;
+                    case 'translation_chunk':
+                        translatedTextElem.textContent = message.payload.accumulated_text;
+                        break;
+                    case 'tts_completed':
+                        statusDiv.textContent = 'Translation complete. Playing audio...';
+                        playAudio(message.payload.audio_base64);
+                        break;
+                    case 'speech_translation_completed':
+                        statusDiv.textContent = 'Process finished!';
+                        originalTextElem.textContent = message.payload.original_text || '(empty)';
+                        translatedTextElem.textContent = message.payload.translated_text;
+                        resetState();
+                        break;
+                    default:
+                        if (message.message) {
+                           statusDiv.textContent = `Server: ${message.message}`;
+                        }
+                }
+            };
+
+            ws.onclose = (event) => {
+                statusDiv.textContent = `WebSocket disconnected: ${event.reason || 'Normal closure'}.`;
+                resetState();
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+                statusDiv.textContent = 'WebSocket error. Check console.';
+                resetState();
+            };
+        }
+
+        async function startRecording() {
+            originalTextElem.textContent = "-";
+            translatedTextElem.textContent = "-";
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Используем MIME-тип, поддерживаемый вашим бэкендом
+                const mimeType = ['audio/webm', 'audio/ogg', 'audio/mp4'].find(MediaRecorder.isTypeSupported) || 'audio/webm';
+                mediaRecorder = new MediaRecorder(stream, { mimeType }); 
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: mimeType });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        const base64Audio = reader.result.split(',')[1];
+                        sendAudioData(base64Audio);
+                    };
+                };
+                
+                audioChunks = [];
+                connectWebSocket();
+
+            } catch (error) {
+                console.error('Error starting recording:', error);
+                statusDiv.textContent = 'Error: Could not start recording. Check microphone permissions.';
+            }
+        }
+
+        function stopRecordingAndSend() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop(); // Это вызовет onstop, который отправит данные
+                statusDiv.textContent = 'Recording stopped. Processing...';
+            }
+        }
+
+        function sendAudioData(base64Audio) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const payload = {
+                    type: 'speech_translate_request',
+                    request_id: crypto.randomUUID(),
+                    payload: {
+                        src_lang: srcLangInput.value,
+                        dst_lang: dstLangInput.value,
+                        audio_data: base64Audio,
+                        voice: 'nova', // optional
+                        speed: 1.0     // optional
+                    }
+                };
+                ws.send(JSON.stringify(payload));
+                statusDiv.textContent = 'Audio sent. Waiting for response...';
+            } else {
+                 statusDiv.textContent = 'Error: WebSocket is not open. Please try recording again.';
+                 resetState();
+            }
+        }
+
+        function playAudio(base64String) {
+            const audioSrc = `data:audio/mp3;base64,${base64String}`;
+            const audio = new Audio(audioSrc);
+            audio.play();
+            audio.onended = () => {
+                 statusDiv.textContent = 'Playback finished. Ready for new recording.';
+            };
+        }
+        
+        function resetState() {
+             isRecording = false;
+             recordBtn.textContent = 'Start Recording';
+             recordBtn.classList.remove('recording');
+             if(ws) ws.close();
+             ws = null;
+        }
+
+    </script>
+</body>
+</html> 

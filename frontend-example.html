@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Speech Streaming Demo</title>
+</head>
+<body>
+    <h1>🎤 Как завершить стриминг записи</h1>
+    
+    <button id="start-btn">Start Recording</button>
+    <button id="stop-btn">Stop Recording</button>
+    
+    <div id="status">Ready</div>
+    
+    <script>
+        let ws = null;
+        let requestId = null;
+        let isRecording = false;
+        
+        // Подключение к WebSocket
+        function connect() {
+            const token = 'your-jwt-token';
+            ws = new WebSocket(`ws://localhost:3000/v1/stream/speech?token=${token}`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Server message:', data.type);
+            };
+        }
+        
+        // Начало стриминга
+        function startStreaming() {
+            requestId = generateUUID();
+            
+            const message = {
+                type: 'start_streaming',
+                request_id: requestId,
+                payload: {
+                    src_lang: 'en',
+                    dst_lang: 'ru',
+                    voice: 'alloy',
+                    speed: 1.0
+                }
+            };
+            
+            ws.send(JSON.stringify(message));
+            isRecording = true;
+            document.getElementById('status').textContent = 'Recording...';
+        }
+        
+        // ⭐ КЛЮЧЕВАЯ ФУНКЦИЯ: Завершение стриминга
+        function endStreaming() {
+            if (requestId && ws) {
+                const message = {
+                    type: 'end_streaming',
+                    request_id: requestId,
+                    payload: {
+                        is_final: true
+                    }
+                };
+                
+                ws.send(JSON.stringify(message));
+                console.log('✅ Streaming ended, server notified');
+                
+                isRecording = false;
+                requestId = null;
+                document.getElementById('status').textContent = 'Stopped';
+            }
+        }
+        
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        
+        // События кнопок
+        document.getElementById('start-btn').onclick = () => {
+            if (!ws) connect();
+            startStreaming();
+        };
+        
+        document.getElementById('stop-btn').onclick = () => {
+            endStreaming(); // ⭐ Главное - уведомить сервер!
+        };
+    </script>
+</body>
+</html> 

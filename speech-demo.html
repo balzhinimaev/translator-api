@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Переводчик речи в реальном времени</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        
+        select, input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        .record-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .record-button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 0 10px;
+        }
+        
+        .record-button:hover {
+            background: #45a049;
+            transform: scale(1.05);
+        }
+        
+        .record-button.recording {
+            background: #f44336;
+            animation: pulse 1s infinite;
+        }
+        
+        .record-button.processing {
+            background: #ff9800;
+            cursor: not-allowed;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .text-areas {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .text-section {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .text-section h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .text-area {
+            height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        
+        .text-area:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+        
+        .status {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            border-left-color: #f44336;
+            color: #c62828;
+        }
+        
+        .status.success {
+            background: #e8f5e8;
+            border-left-color: #4CAF50;
+            color: #2e7d32;
+        }
+        
+        .audio-controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .play-button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 0 5px;
+        }
+        
+        .play-button:hover {
+            background: #1976D2;
+        }
+        
+        .play-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .connection-status.connected {
+            background: #4CAF50;
+        }
+        
+        .connection-status.disconnected {
+            background: #f44336;
+        }
+        
+        .connection-status.connecting {
+            background: #ff9800;
+        }
+        
+        .progress {
+            margin: 20px 0;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 6px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        @media (max-width: 600px) {
+            .controls, .text-areas {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Переводчик речи в реальном времени</h1>
+        
+        <div class="connection-status" id="connectionStatus">Подключение...</div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="srcLang">Язык источника:</label>
+                <select id="srcLang">
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="dstLang">Язык перевода:</label>
+                <select id="dstLang">
+                    <option value="en">English</option>
+                    <option value="ru">Русский</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
+                    <option value="it">Italiano</option>
+                    <option value="pt">Português</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="voice">Голос:</label>
+                <select id="voice">
+                    <option value="alloy">Alloy</option>
+                    <option value="echo">Echo</option>
+                    <option value="fable">Fable</option>
+                    <option value="onyx">Onyx</option>
+                    <option value="nova">Nova</option>
+                    <option value="shimmer">Shimmer</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="speed">Скорость речи:</label>
+                <input type="range" id="speed" min="0.25" max="2" step="0.25" value="1">
+                <span id="speedValue">1.0x</span>
+            </div>
+        </div>
+        
+        <div class="record-section">
+            <button id="recordButton" class="record-button" title="Нажмите для записи">
+                🎤
+            </button>
+            <div>
+                <small>Нажмите и удерживайте для записи</small>
+            </div>
+        </div>
+        
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="text-areas">
+            <div class="text-section">
+                <h3>📝 Распознанный текст</h3>
+                <textarea id="originalText" class="text-area" placeholder="Здесь появится распознанный с микрофона текст..." readonly></textarea>
+            </div>
+            
+            <div class="text-section">
+                <h3>🔄 Переведенный текст</h3>
+                <textarea id="translatedText" class="text-area" placeholder="Здесь появится переведенный текст..." readonly></textarea>
+            </div>
+        </div>
+        
+        <div class="audio-controls">
+            <button id="playOriginal" class="play-button" disabled>▶️ Воспроизвести оригинал</button>
+            <button id="playTranslated" class="play-button" disabled>▶️ Воспроизвести перевод</button>
+        </div>
+    </div>
+
+    <script>
+        class SpeechTranslator {
+            constructor() {
+                this.ws = null;
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                this.isRecording = false;
+                this.currentRequestId = null;
+                this.translatedAudio = null;
+                
+                this.initializeElements();
+                this.setupEventListeners();
+                this.connectWebSocket();
+            }
+            
+            initializeElements() {
+                this.recordButton = document.getElementById('recordButton');
+                this.srcLangSelect = document.getElementById('srcLang');
+                this.dstLangSelect = document.getElementById('dstLang');
+                this.voiceSelect = document.getElementById('voice');
+                this.speedSlider = document.getElementById('speed');
+                this.speedValue = document.getElementById('speedValue');
+                this.originalTextArea = document.getElementById('originalText');
+                this.translatedTextArea = document.getElementById('translatedText');
+                this.statusDiv = document.getElementById('status');
+                this.connectionStatus = document.getElementById('connectionStatus');
+                this.progressBar = document.getElementById('progressBar');
+                this.playOriginalBtn = document.getElementById('playOriginal');
+                this.playTranslatedBtn = document.getElementById('playTranslated');
+            }
+            
+            setupEventListeners() {
+                this.recordButton.addEventListener('mousedown', () => this.startRecording());
+                this.recordButton.addEventListener('mouseup', () => this.stopRecording());
+                this.recordButton.addEventListener('touchstart', () => this.startRecording());
+                this.recordButton.addEventListener('touchend', () => this.stopRecording());
+                
+                this.speedSlider.addEventListener('input', (e) => {
+                    this.speedValue.textContent = e.target.value + 'x';
+                });
+                
+                this.playOriginalBtn.addEventListener('click', () => this.playOriginalAudio());
+                this.playTranslatedBtn.addEventListener('click', () => this.playTranslatedAudio());
+            }
+            
+            connectWebSocket() {
+                this.updateConnectionStatus('connecting', 'Подключение...');
+                
+                // Замените на ваш реальный WebSocket URL
+                const wsUrl = 'ws://localhost:3000/v1/stream/speech';
+                this.ws = new WebSocket(wsUrl);
+                
+                this.ws.onopen = () => {
+                    this.updateConnectionStatus('connected', 'Подключено');
+                    this.showStatus('Соединение установлено! Готов к работе.', 'success');
+                };
+                
+                this.ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                };
+                
+                this.ws.onclose = () => {
+                    this.updateConnectionStatus('disconnected', 'Отключено');
+                    this.showStatus('Соединение прервано. Попытка переподключения...', 'error');
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    this.showStatus('Ошибка соединения', 'error');
+                };
+            }
+            
+            updateConnectionStatus(status, text) {
+                this.connectionStatus.className = `connection-status ${status}`;
+                this.connectionStatus.textContent = text;
+            }
+            
+            async startRecording() {
+                if (this.isRecording || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+                
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: 16000,
+                            channelCount: 1,
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        } 
+                    });
+                    
+                    this.mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'audio/webm;codecs=opus'
+                    });
+                    
+                    this.audioChunks = [];
+                    
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            this.audioChunks.push(event.data);
+                        }
+                    };
+                    
+                    this.mediaRecorder.onstop = () => {
+                        this.processRecording();
+                    };
+                    
+                    this.mediaRecorder.start();
+                    this.isRecording = true;
+                    this.recordButton.classList.add('recording');
+                    this.recordButton.textContent = '🔴';
+                    this.showStatus('Запись... Отпустите кнопку для завершения', 'info');
+                    this.updateProgress(10);
+                    
+                } catch (error) {
+                    console.error('Error starting recording:', error);
+                    this.showStatus('Ошибка доступа к микрофону: ' + error.message, 'error');
+                }
+            }
+            
+            stopRecording() {
+                if (!this.isRecording || !this.mediaRecorder) {
+                    return;
+                }
+                
+                this.mediaRecorder.stop();
+                this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                this.isRecording = false;
+                this.recordButton.classList.remove('recording');
+                this.recordButton.classList.add('processing');
+                this.recordButton.textContent = '⏳';
+                this.showStatus('Обработка записи...', 'info');
+                this.updateProgress(25);
+            }
+            
+            async processRecording() {
+                if (this.audioChunks.length === 0) {
+                    this.resetRecordButton();
+                    return;
+                }
+                
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const base64Audio = this.arrayBufferToBase64(arrayBuffer);
+                
+                this.currentRequestId = this.generateUUID();
+                
+                const message = {
+                    type: 'speech_translate_request',
+                    request_id: this.currentRequestId,
+                    payload: {
+                        src_lang: this.srcLangSelect.value,
+                        dst_lang: this.dstLangSelect.value,
+                        audio_data: base64Audio,
+                        voice: this.voiceSelect.value,
+                        speed: parseFloat(this.speedSlider.value)
+                    }
+                };
+                
+                this.ws.send(JSON.stringify(message));
+                this.updateProgress(50);
+            }
+            
+            handleWebSocketMessage(data) {
+                console.log('WebSocket message:', data);
+                
+                switch (data.type) {
+                    case 'info':
+                        this.showStatus(data.message, 'info');
+                        break;
+                        
+                    case 'processing_started':
+                        this.showStatus('Начата обработка аудио...', 'info');
+                        this.updateProgress(40);
+                        break;
+                        
+                    case 'stt_completed':
+                        this.originalTextArea.value = data.payload.text;
+                        this.showStatus(`Текст распознан: "${data.payload.text}"`, 'success');
+                        this.updateProgress(60);
+                        break;
+                        
+                    case 'translation_chunk':
+                        this.translatedTextArea.value = data.payload.accumulated_text;
+                        break;
+                        
+                    case 'translation_completed':
+                        this.translatedTextArea.value = data.payload.translated_text;
+                        this.showStatus('Перевод завершен!', 'success');
+                        this.updateProgress(80);
+                        break;
+                        
+                    case 'tts_completed':
+                        this.translatedAudio = data.payload.audio_base64;
+                        this.playTranslatedBtn.disabled = false;
+                        this.showStatus('Аудио перевод готов!', 'success');
+                        this.updateProgress(90);
+                        break;
+                        
+                    case 'speech_translation_completed':
+                        this.showStatus('Перевод завершен успешно! 🎉', 'success');
+                        this.updateProgress(100);
+                        this.resetRecordButton();
+                        
+                        // Автоматическое воспроизведение перевода
+                        setTimeout(() => {
+                            this.playTranslatedAudio();
+                        }, 500);
+                        break;
+                        
+                    case 'error':
+                        this.showStatus(`Ошибка: ${data.message || data.error}`, 'error');
+                        this.resetRecordButton();
+                        break;
+                }
+            }
+            
+            showStatus(message, type = 'info') {
+                this.statusDiv.textContent = message;
+                this.statusDiv.className = `status ${type}`;
+                this.statusDiv.style.display = 'block';
+            }
+            
+            updateProgress(percentage) {
+                this.progressBar.style.width = percentage + '%';
+                if (percentage >= 100) {
+                    setTimeout(() => {
+                        this.progressBar.style.width = '0%';
+                    }, 2000);
+                }
+            }
+            
+            resetRecordButton() {
+                this.recordButton.classList.remove('recording', 'processing');
+                this.recordButton.textContent = '🎤';
+            }
+            
+            playOriginalAudio() {
+                // Для воспроизведения оригинального аудио можно использовать записанный blob
+                this.showStatus('Воспроизведение оригинального аудио пока не реализовано', 'info');
+            }
+            
+            playTranslatedAudio() {
+                if (!this.translatedAudio) {
+                    this.showStatus('Аудио перевод не готов', 'error');
+                    return;
+                }
+                
+                try {
+                    const audio = new Audio(`data:audio/mp3;base64,${this.translatedAudio}`);
+                    audio.play();
+                    this.showStatus('Воспроизведение перевода...', 'info');
+                } catch (error) {
+                    console.error('Error playing audio:', error);
+                    this.showStatus('Ошибка воспроизведения аудио', 'error');
+                }
+            }
+            
+            arrayBufferToBase64(buffer) {
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binary);
+            }
+            
+            generateUUID() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    const r = Math.random() * 16 | 0;
+                    const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+        }
+        
+        // Инициализация приложения
+        document.addEventListener('DOMContentLoaded', () => {
+            new SpeechTranslator();
+        });
+        
+        // Предотвращение контекстного меню на кнопке записи
+        document.getElementById('recordButton').addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+    </script>
+</body>
+</html> 
