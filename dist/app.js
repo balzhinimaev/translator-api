@@ -22,6 +22,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
 const http_1 = __importDefault(require("http"));
 const ws_1 = require("ws");
 const llm_service_1 = require("./services/llm.service");
@@ -36,13 +37,15 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const user_model_1 = require("./models/user.model");
 const app = (0, express_1.default)();
 const port = process.env.PORT || 3000;
-// Настройка CORS для разрешения запросов с локальных файлов и разработки
-// app.use(cors({
-//   origin: 'https://anoname.xyz', // Явно разрешаем домен вашего фронтенда
-//   credentials: true,
-//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-//   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-// }));
+// Middleware CORS. Передайте список доменов в переменной CORS_ORIGIN через запятую.
+// Пример: CORS_ORIGIN="https://websupps.site,https://www.websupps.site"
+const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').filter(Boolean);
+app.use((0, cors_1.default)({
+    origin: allowedOrigins.length ? allowedOrigins : '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 // Для парсинга JSON в body (если понадобится для других роутов)
 app.use(express_1.default.json());
 // API routes
@@ -50,6 +53,24 @@ app.use('/v1', v1_1.default);
 // Пример обычного REST-эндпоинта
 app.get('/', (req, res) => {
     res.send('API is running');
+});
+// Health check эндпоинт
+app.get('/health', (req, res) => {
+    try {
+        // В будущем здесь можно добавить более сложные проверки,
+        // например, состояние подключения к базе данных.
+        res.status(200).json({
+            status: 'UP',
+            timestamp: new Date().toISOString()
+        });
+    }
+    catch (error) {
+        res.status(503).json({
+            status: 'DOWN',
+            timestamp: new Date().toISOString(),
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 });
 const server = http_1.default.createServer(app);
 // WebSocket сервер для перевода текста (без прямого подключения к http.Server)
